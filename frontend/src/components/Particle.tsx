@@ -1,17 +1,21 @@
-import { type FC, memo } from 'react';
+import { type FC, memo, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Text, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
 
+export interface ParticleRef {
+  updateProgress: (progress: number, maxAllowed: number, colIndex: number) => [number, number, number] | undefined;
+}
+
 interface ParticleProps {
-  position: [number, number, number];
+  position?: [number, number, number];
   Fe: number; // Fuerza eléctrica en Y
   Fm: number; // Fuerza magnética en Y
   vx: number; // Velocidad en X
   charge: number;
-  trailPoints: [number, number, number][];
+  curve3D?: THREE.CatmullRomCurve3 | null;
   fullTrajectoryPoints?: [number, number, number][];
   isCollided?: boolean;
-  collisionPlate?: 'top' | 'bottom' | null;
+  collisionPlate?: 'top' | 'bottom' | 'end' | null;
   showForces?: boolean;
 }
 
@@ -46,17 +50,55 @@ const ForceArrow: FC<{
   );
 };
 
-export const Particle: FC<ParticleProps> = memo(({
-  position,
+export const Particle = memo(forwardRef<ParticleRef, ParticleProps>(({
+  position = [-6, 0, 0],
   Fe,
   Fm,
   charge,
-  trailPoints,
+  curve3D,
   fullTrajectoryPoints,
   isCollided = false,
   collisionPlate = null,
   showForces = true,
-}) => {
+}, ref) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const trailLineRef = useRef<any>(null);
+
+  useImperativeHandle(ref, () => ({
+    updateProgress: (progress, maxAllowed) => {
+      if (!fullTrajectoryPoints || fullTrajectoryPoints.length === 0) return undefined;
+      const effectiveProgress = Math.min(progress, maxAllowed);
+      
+      let px = 0, py = 0, pz = 0;
+      if (curve3D) {
+         const v = curve3D.getPointAt(effectiveProgress);
+         px = v.x; py = v.y; pz = v.z;
+      } else {
+         const total = fullTrajectoryPoints.length;
+         const idx = Math.min(Math.floor(effectiveProgress * (total - 1)), total - 1);
+         const pt = fullTrajectoryPoints[idx];
+         px = pt[0]; py = pt[1]; pz = pt[2];
+      }
+
+      if (groupRef.current) {
+        groupRef.current.position.set(px, py, pz);
+      }
+
+      if (trailLineRef.current && trailLineRef.current.geometry) {
+         const totalPoints = fullTrajectoryPoints.length;
+         const s = effectiveProgress * (totalPoints - 1);
+         const trailIdx = Math.min(Math.max(1, Math.floor(s)), totalPoints - 1);
+         
+         const activeTrail = fullTrajectoryPoints.slice(0, trailIdx + 1).flatMap(p => p);
+         activeTrail.push(px, py, pz);
+         
+         trailLineRef.current.geometry.setPositions(activeTrail);
+      }
+
+      return [px, py, pz];
+    }
+  }), [fullTrajectoryPoints, curve3D]);
+
   // Color esmeralda vibrante para la trayectoria física continua (Figura B y D)
   const particleColor = charge > 0 ? '#10b981' : charge < 0 ? '#06b6d4' : '#fbbf24';
 
@@ -73,7 +115,6 @@ export const Particle: FC<ParticleProps> = memo(({
 
   return (
     <group>
-      {/* 1. ESTELA DE TRAYECTORIA LUMINOSA Y SUAVE (FIGURA D) */}
       {/* 1. GUÍA COMPLETA PREVIA DE LA TRAYECTORIA FÍSICA (Referencia tenue continua) */}
       {fullTrajectoryPoints && fullTrajectoryPoints.length > 1 && (
         <Line
@@ -86,20 +127,17 @@ export const Particle: FC<ParticleProps> = memo(({
       )}
 
       {/* 2. ESTELA DINÁMICA ACTIVA TRAZADA POR LA PARTÍCULA EN TIEMPO REAL */}
-      {trailPoints.length > 1 && (
-        <Line
-          points={trailPoints}
-          color={isCollided ? '#ef4444' : '#10b981'}
-          lineWidth={3.0}
-          lineWidth={3.2}
-          transparent
-          opacity={0.92}
-          opacity={0.95}
-        />
-      )}
+      <Line
+        ref={trailLineRef}
+        points={fullTrajectoryPoints && fullTrajectoryPoints.length > 0 ? [fullTrajectoryPoints[0], fullTrajectoryPoints[0]] : [[-6,0,0], [-6,0,0]]}
+        color={isCollided ? '#ef4444' : '#10b981'}
+        lineWidth={3.2}
+        transparent
+        opacity={0.95}
+      />
 
       {/* 2. NÚCLEO DE LA PARTÍCULA */}
-      <group position={position}>
+      <group ref={groupRef} position={position}>
         {/* Esfera central con resplandor emisivo */}
         <mesh>
           <sphereGeometry args={[isCollided ? 0.28 : 0.22, 32, 32]} />
@@ -173,7 +211,7 @@ export const Particle: FC<ParticleProps> = memo(({
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.6)',
                 }}
               >
-                💥 IMPACTO CON PLACA
+                {collisionPlate === 'end' ? '❌ FILTRADO / BLOQUEADO' : '💥 IMPACTO CON PLACA'}
               </div>
             </Html>
           </group>
@@ -235,6 +273,6 @@ export const Particle: FC<ParticleProps> = memo(({
       </group>
     </group>
   );
-});
+}));
 
 Particle.displayName = 'Particle';
