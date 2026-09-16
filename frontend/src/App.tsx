@@ -71,7 +71,7 @@ function App() {
 
     const delayDebounceFn = setTimeout(() => {
       fetchSimulation();
-    }, 60);
+    }, 400);
 
     return () => {
       isMounted = false;

@@ -721,7 +721,7 @@ html, body {
 
   .canvas-card-3d {
     height: 48vh;
-    min-height: 390px;
+    min-height: 340px;
   }
 
   /* Barra lateral / Deck en móvil */
@@ -790,7 +790,7 @@ html, body {
 
   .canvas-card-3d {
     height: 44vh;
-    min-height: 340px;
+    min-height: 280px;
   }
 }
 

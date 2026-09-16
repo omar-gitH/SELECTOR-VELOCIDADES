@@ -594,10 +594,12 @@ export const SimulationCanvas: FC<SimulationCanvasProps> = ({
       {/* 3. ESCENARIO THREE.JS (CANVAS 3D/2D)                      */}
       {/* ======================================================== */}
       <Canvas
+        dpr={[1, 1.5]}
         style={{
           width: '100%',
           height: '100%',
           background: 'radial-gradient(circle at 50% 42%, #22324f 0%, #142036 58%, #0d1526 100%)',
+          touchAction: 'none',
         }}
       >
         <PerspectiveCamera makeDefault position={[3, 3.8, 9.5]} fov={48} />
