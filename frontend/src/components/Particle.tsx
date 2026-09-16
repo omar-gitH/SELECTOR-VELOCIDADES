@@ -73,6 +73,7 @@ export const Particle: FC<ParticleProps> = memo(({
 
   return (
     <group>
+      {/* 1. ESTELA DE TRAYECTORIA LUMINOSA Y SUAVE (FIGURA D) */}
       {/* 1. GUÍA COMPLETA PREVIA DE LA TRAYECTORIA FÍSICA (Referencia tenue continua) */}
       {fullTrajectoryPoints && fullTrajectoryPoints.length > 1 && (
         <Line
@@ -89,8 +90,10 @@ export const Particle: FC<ParticleProps> = memo(({
         <Line
           points={trailPoints}
           color={isCollided ? '#ef4444' : '#10b981'}
+          lineWidth={3.0}
           lineWidth={3.2}
           transparent
+          opacity={0.92}
           opacity={0.95}
         />
       )}

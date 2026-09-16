@@ -1,4 +1,5 @@
 import { type FC, useState, useRef, useMemo } from 'react';
+import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -68,6 +69,7 @@ const SceneContent: FC<{
   onSuccessPass,
 }) => {
   // Precalculamos la trayectoria 3D completa y detectamos colisiones con placas
+  const { smoothPath3D, curve3D, collisionIndex, collisionPlate, Fe, Fm } = useMemo(() => {
   const { smoothPath3D, collisionIndex, collisionPlate, Fe, Fm } = useMemo(() => {
     const feVal = -params.q * params.E_y;
     const fmVal = params.q * params.v_x * params.B_z;
@@ -76,6 +78,7 @@ const SceneContent: FC<{
       return {
         path3D: [[-6, 0, 0]] as [number, number, number][],
         smoothPath3D: [[-6, 0, 0]] as [number, number, number][],
+        curve3D: null as THREE.CatmullRomCurve3 | null,
         collisionIndex: -1,
         collisionPlate: null,
         Fe: feVal,
@@ -118,8 +121,32 @@ const SceneContent: FC<{
       points.push([x3D, y3D, 0]);
     }
 
+    // Interpolación suave y continua con CatmullRomCurve3 (centripetal previene sobreimpulsos erráticos)
+    let curve: THREE.CatmullRomCurve3 | null = null;
+    let smoothPoints: [number, number, number][] = points;
+
+    if (points.length >= 2) {
+      // Filtrar puntos redundantes o con distancia despreciable para evitar singularidades
+      const filteredVectors: THREE.Vector3[] = [];
+      for (let i = 0; i < points.length; i++) {
+        const v = new THREE.Vector3(...points[i]);
+        if (i === 0 || v.distanceTo(filteredVectors[filteredVectors.length - 1]) > 1e-5) {
+          filteredVectors.push(v);
+        }
+      }
+
+      if (filteredVectors.length >= 2) {
+        curve = new THREE.CatmullRomCurve3(filteredVectors, false, 'centripetal', 0.5);
+        const numSamples = Math.min(500, Math.max(200, filteredVectors.length * 2));
+        const sampled = curve.getPoints(numSamples);
+        smoothPoints = sampled.map((v) => [v.x, v.y, v.z]);
+      }
+    }
+
     return {
       path3D: points,
+      smoothPath3D: smoothPoints,
+      curve3D: curve,
       smoothPath3D: points,
       collisionIndex: colIdx,
       collisionPlate: colPlate,
@@ -154,6 +181,7 @@ const SceneContent: FC<{
     return collisionIndex / (trajectory.length - 1);
   }, [collisionIndex, trajectory]);
 
+  // Posición actual de la partícula y estela suavemente interpolada
   // Posición actual de la partícula y estela suavemente interpolada con sub-frame precision
   const { currentPos, currentTrail, isAtCollision } = useMemo(() => {
     if (smoothPath3D.length === 0) {
@@ -167,9 +195,30 @@ const SceneContent: FC<{
     const effectiveProgress = Math.min(progress, maxAllowedProgress);
     const pos = samplePathPosition(smoothPath3D, effectiveProgress);
 
+    let pos: [number, number, number];
+    if (curve3D) {
+      const v = curve3D.getPointAt(effectiveProgress);
+      pos = [v.x, v.y, v.z];
+    } else {
+      const totalPoints = smoothPath3D.length;
+      const currentIdx = Math.min(
+        Math.floor(effectiveProgress * (totalPoints - 1)),
+        totalPoints - 1
+      );
+      pos = smoothPath3D[currentIdx];
+    }
     const s = effectiveProgress * (smoothPath3D.length - 1);
     const idx = Math.min(Math.floor(s), smoothPath3D.length - 2);
 
+    // Estela continua muestreada sobre la curva suave hasta el punto actual
+    const trailIdx = Math.min(
+      Math.max(1, Math.floor(effectiveProgress * (smoothPath3D.length - 1))),
+      smoothPath3D.length - 1
+    );
+    const trail = smoothPath3D.slice(0, trailIdx + 1);
+    if (trail.length > 0) {
+      trail[trail.length - 1] = pos;
+    }
     // La estela activa conserva todos los puntos físicos anteriores y termina con continuidad exacta en pos
     const currentTrail: [number, number, number][] = [
       ...smoothPath3D.slice(0, idx + 1),
@@ -178,15 +227,19 @@ const SceneContent: FC<{
 
     const atImpact =
       collisionIndex !== -1 &&
+      effectiveProgress >= maxAllowedProgress * 0.97;
       effectiveProgress >= maxAllowedProgress * 0.98;
 
     return {
       currentPos: pos,
+      currentTrail: trail,
       currentTrail,
       isAtCollision: atImpact,
     };
+  }, [curve3D, smoothPath3D, progress, maxAllowedProgress, collisionIndex]);
   }, [smoothPath3D, progress, maxAllowedProgress, collisionIndex]);
 
+  // Bucle de animación 60fps
   // Bucle de animación optimizado a 60-120fps continuos
   useFrame((state, delta) => {
     if (isPlaying && smoothPath3D.length > 0) {
@@ -194,6 +247,7 @@ const SceneContent: FC<{
       const dt = Math.min(delta, 0.033);
 
       setProgress((prev) => {
+        const next = prev + delta * playbackSpeed * 0.35;
         const next = prev + dt * playbackSpeed * 0.35;
 
         // Si choca contra la placa y llega al impacto
