@@ -56,7 +56,7 @@ function App() {
     const fetchSimulation = async () => {
       setError(null);
       try {
-        const response = await axios.post('http://127.0.0.1:8000/simular', params);
+        const response = await axios.post('/api/simular', params);
         if (isMounted && Array.isArray(response.data) && response.data.length > 0) {
           setTrajectory(response.data);
           setIsBackendLive(true);
@@ -206,7 +206,7 @@ function App() {
             }`}
             title={
               isBackendLive
-                ? 'FastAPI (Python) conectado en http://127.0.0.1:8000'
+                ? 'FastAPI (Python) conectado en /api'
                 : 'Fallo al contactar el motor físico'
             }
           >
