@@ -67,17 +67,26 @@ export const Particle = memo(forwardRef<ParticleRef, ParticleProps>(({
   useImperativeHandle(ref, () => ({
     updateProgress: (progress, maxAllowed) => {
       if (!fullTrajectoryPoints || fullTrajectoryPoints.length === 0) return undefined;
-      const effectiveProgress = Math.min(progress, maxAllowed);
+      const effectiveProgress = Math.max(0, Math.min(Number.isFinite(progress) ? progress : 0, maxAllowed));
       
-      let px = 0, py = 0, pz = 0;
+      let px = fullTrajectoryPoints[0][0], py = fullTrajectoryPoints[0][1], pz = fullTrajectoryPoints[0][2];
       if (curve3D) {
-         const v = curve3D.getPointAt(effectiveProgress);
-         px = v.x; py = v.y; pz = v.z;
+        try {
+          const v = curve3D.getPointAt(effectiveProgress);
+          if (v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)) {
+            px = v.x; py = v.y; pz = v.z;
+          }
+        } catch {
+          const pt = fullTrajectoryPoints[0];
+          px = pt[0]; py = pt[1]; pz = pt[2];
+        }
       } else {
-         const total = fullTrajectoryPoints.length;
-         const idx = Math.min(Math.floor(effectiveProgress * (total - 1)), total - 1);
-         const pt = fullTrajectoryPoints[idx];
-         px = pt[0]; py = pt[1]; pz = pt[2];
+        const total = fullTrajectoryPoints.length;
+        const idx = Math.min(Math.floor(effectiveProgress * (total - 1)), total - 1);
+        const pt = fullTrajectoryPoints[idx];
+        if (pt && Number.isFinite(pt[0]) && Number.isFinite(pt[1]) && Number.isFinite(pt[2])) {
+          px = pt[0]; py = pt[1]; pz = pt[2];
+        }
       }
 
       if (groupRef.current) {
@@ -85,14 +94,18 @@ export const Particle = memo(forwardRef<ParticleRef, ParticleProps>(({
       }
 
       if (trailLineRef.current && trailLineRef.current.geometry) {
-         const totalPoints = fullTrajectoryPoints.length;
-         const s = effectiveProgress * (totalPoints - 1);
-         const trailIdx = Math.min(Math.max(1, Math.floor(s)), totalPoints - 1);
-         
-         const activeTrail = fullTrajectoryPoints.slice(0, trailIdx + 1).flatMap(p => p);
-         activeTrail.push(px, py, pz);
-         
-         trailLineRef.current.geometry.setPositions(activeTrail);
+        try {
+          const totalPoints = fullTrajectoryPoints.length;
+          const s = effectiveProgress * (totalPoints - 1);
+          const trailIdx = Math.min(Math.max(1, Math.floor(s)), totalPoints - 1);
+          
+          const activeTrail = fullTrajectoryPoints.slice(0, trailIdx + 1).flatMap(p => p);
+          activeTrail.push(px, py, pz);
+          
+          trailLineRef.current.geometry.setPositions(activeTrail);
+        } catch {
+          // previene fallos ante cambios dinámicos de escala
+        }
       }
 
       return [px, py, pz];

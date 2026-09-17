@@ -67,7 +67,8 @@ export const ControlPanel: FC<ControlPanelProps> = ({
 }) => {
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    const numericValue = value === '' ? 0 : parseFloat(value);
+    const parsed = parseFloat(value);
+    const numericValue = value === '' ? 0 : Number.isNaN(parsed) ? 0 : parsed;
     onChange({ ...params, [name]: numericValue });
 
     if (name === 'q' || name === 'm') {
@@ -85,7 +86,9 @@ export const ControlPanel: FC<ControlPanelProps> = ({
   // Ajustes rápidos de velocidad (±10% o ±5%)
   const adjustVelocity = (factor: number) => {
     const newV = Math.round(params.v_x * factor);
-    onChange({ ...params, v_x: newV });
+    if (newV > 0 && Number.isFinite(newV)) {
+      onChange({ ...params, v_x: newV });
+    }
   };
 
   // Diagnóstico físico de Lorentz
@@ -189,7 +192,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
             onClick={onAutoCalibrate}
             className="btn btn-cyan-outline"
             style={{ padding: '4px 10px', fontSize: '0.75rem', flexShrink: 0 }}
-            title="Ajusta automáticamente vx = E / B para que la partícula no se desvíe"
+            title="Restaura la velocidad y los campos eléctrico y magnético a sus valores iniciales calibrados (E/B)"
           >
             <Target size={14} />
             <span>Auto-Calibrar (E/B)</span>

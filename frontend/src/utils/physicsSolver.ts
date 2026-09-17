@@ -34,7 +34,12 @@ export function solveLorentzTrajectory(
 ): SimulationPoint[] {
   const { q, m, v_x: vx0, E_y: Ey, B_z: Bz, t_sim } = params;
 
-  if (m <= 0 || t_sim <= 0 || vx0 <= 0) {
+  if (
+    !Number.isFinite(m) || m <= 0 ||
+    !Number.isFinite(t_sim) || t_sim <= 0 ||
+    !Number.isFinite(vx0) || vx0 <= 0 ||
+    !Number.isFinite(Ey) || !Number.isFinite(Bz) || !Number.isFinite(q)
+  ) {
     return [{ x: 0, y: 0 }];
   }
 
@@ -59,7 +64,8 @@ export function solveLorentzTrajectory(
   const Fnet = Fe + Fm; // q * (vx0 * Bz - Ey)
 
   const maxF = Math.max(Math.abs(Fe), Math.abs(Fm), 1e-25);
-  const eta = Fnet / maxF; // Imbalance normalizado adimensional en [-1, 1]
+  const rawEta = Fnet / maxF;
+  const eta = Number.isFinite(rawEta) ? Math.max(-1, Math.min(1, rawEta)) : 0;
 
   // Condición de equilibrio exacto (v = E / B): línea recta ideal sobre el eje óptico
   if (Math.abs(eta) < 1e-6) {

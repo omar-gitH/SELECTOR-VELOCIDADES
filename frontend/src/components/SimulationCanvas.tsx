@@ -92,7 +92,10 @@ const SceneContent: FC<{
       }
 
       const maxIdx = trajectory.length - 1;
-      const nominalLength = params.v_x * params.t_sim > 0 ? params.v_x * params.t_sim : 12;
+      const nominalLength =
+        Number.isFinite(params.v_x) && Number.isFinite(params.t_sim) && params.v_x * params.t_sim > 0
+          ? params.v_x * params.t_sim
+          : 12;
 
       // Escala física de placas: 0.04 m (40 mm) para micropartículas, 2.0 m para modo didáctico
       const isMicroScale = Math.abs(params.q) < 1e-10;
@@ -108,9 +111,11 @@ const SceneContent: FC<{
 
       for (let i = 0; i <= maxIdx; i++) {
         const pt = trajectory[i];
+        if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
         const normX = Math.min(1.0, Math.max(0.0, pt.x / nominalLength));
         const x3D = -6 + normX * 12;
         let y3D = (pt.y / baseScale) * 2.22 * deflectionScale;
+        if (!Number.isFinite(y3D)) y3D = 0;
 
         // Las placas están en |Y| = 2.4. Borde de impacto visual en |Y| = 2.22
         if (y3D >= 2.22) {
@@ -144,17 +149,24 @@ const SceneContent: FC<{
         // Filtrar puntos redundantes o con distancia despreciable para evitar singularidades
         const filteredVectors: THREE.Vector3[] = [];
         for (let i = 0; i < points.length; i++) {
-          const v = new THREE.Vector3(...points[i]);
-          if (i === 0 || v.distanceTo(filteredVectors[filteredVectors.length - 1]) > 1e-5) {
+          const [px, py, pz] = points[i];
+          if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) continue;
+          const v = new THREE.Vector3(px, py, pz);
+          if (filteredVectors.length === 0 || v.distanceTo(filteredVectors[filteredVectors.length - 1]) > 1e-5) {
             filteredVectors.push(v);
           }
         }
 
         if (filteredVectors.length >= 2) {
-          curve = new THREE.CatmullRomCurve3(filteredVectors, false, 'centripetal', 0.5);
-          const numSamples = Math.min(500, Math.max(200, filteredVectors.length * 2));
-          const sampled = curve.getPoints(numSamples);
-          smoothPoints = sampled.map((v) => [v.x, v.y, v.z]);
+          try {
+            curve = new THREE.CatmullRomCurve3(filteredVectors, false, 'centripetal', 0.5);
+            const numSamples = Math.min(500, Math.max(200, filteredVectors.length * 2));
+            const sampled = curve.getPoints(numSamples);
+            smoothPoints = sampled.map((v) => [v.x, v.y, v.z]);
+          } catch {
+            curve = null;
+            smoothPoints = points;
+          }
         }
       }
 
@@ -385,7 +397,7 @@ export const SimulationCanvas: FC<SimulationCanvasProps> = ({
   }, [onReset]);
 
   // Disparar desde el mensaje de colisión mediante Auto-calibrar:
-  // Fija v = E / B, despeja el aviso y reproduce de inmediato el haz en equilibrio
+  // Restaura todos los componentes a sus valores iniciales y reproduce el haz en equilibrio
   const handleToastAutoCalibrate = useCallback(() => {
     setCollisionType(null);
     setHasPassedSuccess(false);
@@ -394,12 +406,7 @@ export const SimulationCanvas: FC<SimulationCanvasProps> = ({
     progressRef.current = 0;
     updateHUD(0);
     onAutoCalibrate();
-    if (!isPlaying) {
-      setTimeout(() => {
-        onTogglePlay();
-      }, 70);
-    }
-  }, [onAutoCalibrate, isPlaying, onTogglePlay]);
+  }, [onAutoCalibrate]);
 
   // Reintentar disparo con los mismos parámetros
   const handleToastRetry = useCallback(() => {

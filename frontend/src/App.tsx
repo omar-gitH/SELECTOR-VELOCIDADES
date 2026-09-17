@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { ControlPanel, type SimulationParams } from './components/ControlPanel';
 import { type ParticleType, PARTICLE_PRESETS } from './components/ParticleSelector';
@@ -97,15 +97,47 @@ function App() {
     setTimeout(() => setIsPlaying(true), 80);
   }, [triggerHaptic]);
 
-  // Función para calibrar automáticamente v = E / B (No desviación)
+  // Referencia para recordar la configuración inicial de modo personalizado
+  const initialCustomParamsRef = useRef<SimulationParams>({ ...PARTICLE_PRESETS.proton.params });
+
+  const handleParticleTypeChange = useCallback((type: ParticleType) => {
+    setParticleType(type);
+    if (type !== 'custom' && PARTICLE_PRESETS[type]) {
+      initialCustomParamsRef.current = { ...PARTICLE_PRESETS[type].params };
+    }
+  }, []);
+
+  // Función para calibrar automáticamente restaurando todos los componentes a su estado inicial seguro
   const handleAutoCalibrate = useCallback(() => {
     triggerHaptic([30, 20, 30]);
-    if (params.B_z !== 0) {
-      const idealV = Math.abs(params.E_y / params.B_z);
-      const newParams = { ...params, v_x: idealV };
-      handleParamsChange(newParams);
+
+    let targetParams: SimulationParams;
+
+    if (particleType !== 'custom' && PARTICLE_PRESETS[particleType]) {
+      // Para cualquier partícula con preset (Protón, Electrón, Alfa, Didáctico),
+      // restaurar fielmente todos los componentes originales (v_x, E_y, B_z, t_sim, q, m)
+      targetParams = { ...PARTICLE_PRESETS[particleType].params };
+    } else {
+      // Para modo personalizado, recuperar la configuración base asegurando la condición de balance v = E / B
+      const base = initialCustomParamsRef.current;
+      const safeB = base.B_z !== 0 ? base.B_z : 0.1;
+      const safeV = base.v_x > 0 ? base.v_x : 100000;
+      targetParams = {
+        ...base,
+        v_x: safeV,
+        B_z: safeB,
+        E_y: safeV * Math.abs(safeB),
+      };
     }
-  }, [params, handleParamsChange, triggerHaptic]);
+
+    handleParamsChange(targetParams);
+
+    // Reiniciar y disparar el haz en trayectoria recta sin desvío
+    setIsPlaying(false);
+    setTimeout(() => {
+      setIsPlaying(true);
+    }, 80);
+  }, [particleType, handleParamsChange, triggerHaptic]);
 
   // Toggle pantalla completa
   const toggleFullscreen = () => {
@@ -252,7 +284,7 @@ function App() {
           params={params}
           onChange={handleParamsChange}
           particleType={particleType}
-          onParticleTypeChange={setParticleType}
+          onParticleTypeChange={handleParticleTypeChange}
           isPlaying={isPlaying}
           onTogglePlay={handleTogglePlay}
           onReset={handleReset}
@@ -412,7 +444,7 @@ function App() {
             params={params}
             onChange={handleParamsChange}
             particleType={particleType}
-            onParticleTypeChange={setParticleType}
+            onParticleTypeChange={handleParticleTypeChange}
             isPlaying={isPlaying}
             onTogglePlay={handleTogglePlay}
             onReset={handleReset}
